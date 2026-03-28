@@ -22,7 +22,7 @@
       font-family: 'Press Start 2P', monospace;
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      height: 100dvh;
       overflow: hidden;
     }
 
@@ -63,7 +63,6 @@
     #wrap {
       flex: 1;
       overflow: hidden;
-      position: relative;
       min-height: 0;
     }
     #cvs {
@@ -234,19 +233,24 @@ let OX = 0, OY = 0;
 function resize() {
   const wrap = document.getElementById('wrap');
   cvs.width  = wrap.clientWidth;
-  cvs.height = wrap.clientHeight;
 
   // Scale iso tiles so the full office fits on any screen width
-  // Iso grid screen width = (GW + GH) * baseTW / 2 = 19 * 32 = 608 px
   const baseTW   = 64;
   const isoGridW = (GW + GH) * baseTW / 2;
   const scale    = Math.min(1, (cvs.width * 0.92) / isoGridW);
   TW = Math.max(22, Math.round(baseTW * scale));
   TH = TW / 2;
-  CS = Math.max(0.38, scale);  // scale characters & furniture details
+  CS = Math.max(0.38, scale);
 
+  // Canvas fills the full wrap area; vertically center the office within it
+  cvs.height = wrap.clientHeight;
+
+  const isoGridH   = (GW + GH) * TH / 2;
+  const furnitureH = Math.round(80 * CS);
+  const contentH   = isoGridH + furnitureH;
   OX = cvs.width  * 0.5;
-  OY = cvs.height * (cvs.width < 600 ? 0.10 : 0.17);
+  OY = Math.max(10, Math.round((cvs.height - contentH) * 0.42));
+
   ctx.imageSmoothingEnabled = false;
 }
 
