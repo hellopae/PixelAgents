@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PIXEL AGENTS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0e1a;
+      --panel: #0d1626;
+      --border: #1a2e50;
+      --cyan: #00d4ff;
+      --purple: #8b5cf6;
+    }
+
+    body {
+      background: var(--bg);
+      color: #e0e8ff;
+      font-family: 'Press Start 2P', monospace;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ── */
+    #hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px;
+      border-bottom: 2px solid var(--border);
+      background: rgba(10,14,26,0.97);
+      z-index: 100;
+      flex-shrink: 0;
+    }
+    #hdr h1 {
+      font-size: clamp(10px, 1.8vw, 18px);
+      letter-spacing: 5px;
+      color: var(--cyan);
+      text-shadow: 0 0 16px var(--cyan), 0 0 40px rgba(0,212,255,0.35);
+    }
+    #hdr-right { display: flex; align-items: center; gap: 14px; }
+    #countBadge { font-size: 9px; color: var(--purple); letter-spacing: 2px; }
+    #addBtn {
+      background: transparent;
+      color: var(--purple);
+      border: 2px solid var(--purple);
+      padding: 8px 14px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: clamp(7px, 0.9vw, 10px);
+      cursor: pointer;
+      transition: all 0.1s;
+      letter-spacing: 1px;
+    }
+    #addBtn:hover { background: var(--purple); color: #fff; box-shadow: 0 0 16px var(--purple); }
+    #addBtn:active { transform: scale(0.94); }
+
+    /* ── CANVAS ── */
+    #wrap {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      min-height: 0;
+    }
+    #cvs {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* ── PANEL ── */
+    #panel {
+      height: 136px;
+      flex-shrink: 0;
+      border-top: 2px solid var(--border);
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      padding: 10px 16px;
+      gap: 12px;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    #panel::-webkit-scrollbar { height: 3px; }
+    #panel::-webkit-scrollbar-track { background: var(--bg); }
+    #panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .card {
+      min-width: 164px;
+      height: 112px;
+      border: 2px solid;
+      padding: 10px;
+      flex-shrink: 0;
+      transition: transform 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: currentColor;
+      opacity: 0.3;
+    }
+    .card:hover { transform: translateY(-3px); }
+
+    .card-name {
+      font-size: 8px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      overflow: hidden;
+    }
+    .card-dot { width: 8px; height: 8px; flex-shrink: 0; }
+    .card-state {
+      font-size: 7px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .card-pip { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .card-task {
+      font-size: 6px;
+      opacity: 0.45;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.6;
+    }
+    #emptyMsg {
+      font-size: 8px;
+      color: #1e3a5f;
+      text-align: center;
+      width: 100%;
+      letter-spacing: 2px;
+      line-height: 2;
+    }
+  </style>
+</head>
+<body>
+
+<div id="hdr">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <h1>PIXEL AGENTS</h1>
+    <div id="sseDot" title="Simulation mode (SSE server not connected)"
+      style="width:8px;height:8px;border-radius:50%;background:#2a3a5a;border:1px solid #3a4a6a;flex-shrink:0;transition:background 0.4s,box-shadow 0.4s;"></div>
+    <span id="sseLabel" style="font-size:6px;color:#2a3a5a;letter-spacing:1px;transition:color 0.4s;">SIM</span>
+  </div>
+  <div id="hdr-right">
+    <span id="countBadge"></span>
+    <button id="addBtn">+ AGENT</button>
+  </div>
+</div>
+
+<div id="wrap">
+  <canvas id="cvs"></canvas>
+</div>
+
+<div id="panel">
+  <div id="emptyMsg">CLICK &ldquo;+ AGENT&rdquo; TO SPAWN YOUR FIRST AI AGENT</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════
+const TW = 64, TH = 32;   // isometric tile size
+const GW = 11, GH = 8;    // grid dimensions
+
+const AGENT_NAMES  = ['Alpha','Beta','Gamma','Delta','Epsilon','Zeta','Eta','Theta','Iota','Kappa'];
+const AGENT_COLORS = ['#ff6b6b','#4ecdc4','#ffe66d','#a8e6cf','#c7a4ff','#ffd700','#87ceeb','#ff8b94','#f0a500','#00e5ff'];
+const HAIR_COLORS  = ['#1a1a1a','#8B4513','#4a2400','#8B0000','#2a2a6a','#1a3a1a','#333','#6b3d1e','#0a0a0a','#3a1a00'];
+
+const S = {WALKING:'WALKING', CODING:'CODING', SEARCHING:'SEARCHING', WAITING:'WAITING'};
+
+const S_COLOR = {WALKING:'#ffaa00', CODING:'#00ff88', SEARCHING:'#00d4ff', WAITING:'#ff4444'};
+
+const S_TASKS = {
+  WALKING:   ['Moving to workstation','Heading to meeting','Getting coffee'],
+  CODING:    ['Writing API handler','Fixing bug #4892','Building new feature','Refactoring module','Deploying pipeline','Writing unit tests'],
+  SEARCHING: ['Searching codebase','Reading documentation','Analyzing logs','Reviewing pull request','Scanning errors'],
+  WAITING:   ['Awaiting approval','Needs permission','Waiting for review','Blocked on feedback'],
+};
+
+// Desk world positions
+const DESKS = [
+  {x:2,   y:1},
+  {x:4.6, y:1},
+  {x:7.2, y:1},
+  {x:2,   y:4},
+  {x:4.8, y:4},
+  {x:7.2, y:5},
+];
+
+// Pre-compute monitor code-line data (fixed per desk)
+const MLINES = DESKS.map(() =>
+  Array.from({length:8}, () => ({
+    len:   4 + Math.floor(Math.random() * 18),
+    indent: Math.floor(Math.random() * 5),
+    col:   Math.random() < 0.25 ? '#ff6b6b'
+         : Math.random() < 0.4  ? '#ffe66d'
+         : Math.random() < 0.5  ? '#c7a4ff'
+         : '#4ecdc4',
+  }))
+);
+
+// ═══════════════════════════════════════════════════════
+// CANVAS & PROJECTION
+// ═══════════════════════════════════════════════════════
+const cvs = document.getElementById('cvs');
+const ctx = cvs.getContext('2d');
+let OX = 0, OY = 0;
+
+function resize() {
+  const wrap = document.getElementById('wrap');
+  cvs.width  = wrap.clientWidth;
+  cvs.height = wrap.clientHeight;
+  OX = cvs.width  * 0.5;
+  OY = cvs.height * 0.17;
+  ctx.imageSmoothingEnabled = false;
+}
+
+function iso(wx, wy, wz = 0) {
+  return {
+    x: OX + (wx - wy) * TW / 2,
+    y: OY + (wx + wy) * TH / 2 - wz * 26,
+  };
+}
+
+// ═══════════════════════════════════════════════════════
+// PRIMITIVES
+// ═══════════════════════════════════════════════════════
+function tile(wx, wy, fill, stroke) {
+  const p = iso(wx, wy);
+  ctx.beginPath();
+  ctx.moveTo(p.x,        p.y - TH/2);
+  ctx.lineTo(p.x + TW/2, p.y);
+  ctx.lineTo(p.x,        p.y + TH/2);
+  ctx.lineTo(p.x - TW/2, p.y);
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 0.5; ctx.stroke(); }
+}
+
+function box(wx, wy, w, d, h, cTop, cFront, cSide) {
+  const tfl = iso(wx,     wy,     h);
+  const tfr = iso(wx + w, wy,     h);
+  const tbr = iso(wx + w, wy + d, h);
+  const tbl = iso(wx,     wy + d, h);
+  const bbl = iso(wx,     wy + d, 0);
+  const bbr = iso(wx + w, wy + d, 0);
+  const bfr = iso(wx + w, wy,     0);
+
+  // Top
+  ctx.beginPath();
+  ctx.moveTo(tfl.x, tfl.y); ctx.lineTo(tfr.x, tfr.y);
+  ctx.lineTo(tbr.x, tbr.y); ctx.lineTo(tbl.x, tbl.y);
+  ctx.closePath();
+  ctx.fillStyle = cTop; ctx.fill();
+
+  // Front-left (y+d face)
+  ctx.beginPath();
+  ctx.moveTo(tbl.x, tbl.y); ctx.lineTo(tbr.x, tbr.y);
+  ctx.lineTo(bbr.x, bbr.y); ctx.lineTo(bbl.x, bbl.y);
+  ctx.closePath();
+  ctx.fillStyle = cFront; ctx.fill();
+
+  // Front-right (x+w face)
+  ctx.beginPath();
+  ctx.moveTo(tbr.x, tbr.y); ctx.lineTo(tfr.x, tfr.y);
+  ctx.lineTo(bfr.x, bfr.y); ctx.lineTo(bbr.x, bbr.y);
+  ctx.closePath();
+  ctx.fillStyle = cSide; ctx.fill();
+}
+
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y,   x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ═══════════════════════════════════════════════════════
+// FURNITURE
+// ═══════════════════════════════════════════════════════
+function drawDesk(wx, wy, idx) {
+  box(wx, wy, 1.2, 0.7, 0.44, '#8b6b52', '#6b5240', '#4e3a2c');
+
+  const mp = iso(wx + 0.42, wy + 0.22, 0.44);
+
+  // Stand
+  ctx.fillStyle = '#3a3a4a';
+  ctx.fillRect(mp.x - 2, mp.y, 4, 10);
+  ctx.fillRect(mp.x - 7, mp.y + 8, 14, 2);
+
+  // Screen body
+  const sw = 36, sh = 24;
+  ctx.fillStyle = '#12122a';
+  rr(mp.x - sw/2, mp.y - sh, sw, sh, 3); ctx.fill();
+  ctx.strokeStyle = '#2a3a5a'; ctx.lineWidth = 1.5;
+  rr(mp.x - sw/2, mp.y - sh, sw, sh, 3); ctx.stroke();
+
+  // Code lines
+  if (MLINES[idx]) {
+    MLINES[idx].forEach((ln, i) => {
+      ctx.fillStyle = ln.col;
+      ctx.fillRect(mp.x - sw/2 + 3 + ln.indent, mp.y - sh + 4 + i * 3, ln.len, 1.8);
+    });
+    // Blinking cursor on last line
+    if (Math.floor(Date.now() / 530) % 2 === 0) {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(mp.x - sw/2 + 4, mp.y - sh + 4 + 7 * 3, 3, 4);
+    }
+  }
+
+  // Screen glow
+  ctx.save();
+  ctx.shadowColor = '#0055cc'; ctx.shadowBlur = 14;
+  ctx.fillStyle = 'rgba(0,80,200,0.07)';
+  rr(mp.x - sw/2, mp.y - sh, sw, sh, 3); ctx.fill();
+  ctx.restore();
+
+  // Keyboard
+  const kp = iso(wx + 0.6, wy + 0.54, 0.44);
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(kp.x - 16, kp.y - 3, 32, 8);
+  ctx.strokeStyle = '#2e2e4e'; ctx.lineWidth = 0.5;
+  ctx.strokeRect(kp.x - 16, kp.y - 3, 32, 8);
+  // Key rows
+  ctx.fillStyle = '#2a2a3e';
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 9; c++) {
+      ctx.fillRect(kp.x - 15 + c * 3.4, kp.y - 2 + r * 2.5, 2.5, 1.8);
+    }
+  }
+}
+
+function drawBookshelf(wx, wy) {
+  box(wx, wy, 0.9, 0.4, 1.2, '#6b5240', '#4a3228', '#3a2a1e');
+  const p = iso(wx + 0.45, wy + 0.38, 1.2);
+
+  // Shelf board
+  ctx.fillStyle = '#3a2a1e';
+  ctx.fillRect(p.x - 22, p.y - 16, 44, 2);
+  ctx.fillRect(p.x - 22, p.y - 30, 44, 2);
+
+  // Books
+  const BC = ['#ff6b6b','#4ecdc4','#ffe66d','#a8e6cf','#c7a4ff','#ffd700'];
+  BC.forEach((c, i) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(p.x - 20 + i * 7, p.y - 32, 5, 16);
+    // Spine highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(p.x - 20 + i * 7, p.y - 32, 1, 16);
+  });
+  // Extra small book
+  ctx.fillStyle = '#f08080';
+  ctx.fillRect(p.x + 23, p.y - 30, 4, 14);
+}
+
+function drawPlant(wx, wy) {
+  box(wx, wy, 0.35, 0.35, 0.26, '#a05020', '#7a3a16', '#602e12');
+  const p = iso(wx + 0.175, wy + 0.175, 0.26);
+
+  ctx.fillStyle = '#4a7a30';
+  ctx.fillRect(p.x - 1, p.y - 26, 2, 26);
+
+  const leaves = [
+    {ox:-9, oy:-26, r:10, c:'#2d7a3d'}, {ox:9, oy:-30, r:9,  c:'#3aad50'},
+    {ox:-2, oy:-36, r:8,  c:'#2d8b3d'}, {ox:11,oy:-18, r:6,  c:'#1e6030'},
+    {ox:-11,oy:-20, r:6,  c:'#3aad50'}, {ox:2, oy:-20, r:5,  c:'#4ac060'},
+  ];
+  leaves.forEach(l => {
+    ctx.beginPath(); ctx.arc(p.x + l.ox, p.y + l.oy, l.r, 0, Math.PI*2);
+    ctx.fillStyle = l.c; ctx.fill();
+  });
+}
+
+function drawWaterCooler(wx, wy) {
+  box(wx, wy, 0.42, 0.32, 0.65, '#7090a8', '#506070', '#405060');
+  const p = iso(wx + 0.21, wy + 0.16, 0.65);
+
+  // Water jug
+  ctx.fillStyle = 'rgba(80,160,220,0.72)';
+  rr(p.x - 10, p.y - 26, 20, 26, 4); ctx.fill();
+
+  ctx.fillStyle = 'rgba(40,120,200,0.9)';
+  rr(p.x - 7, p.y - 36, 14, 12, 3); ctx.fill();
+
+  // Glow
+  ctx.save();
+  ctx.shadowColor = '#40a0e0'; ctx.shadowBlur = 10;
+  ctx.fillStyle = 'rgba(100,180,255,0.12)';
+  rr(p.x - 10, p.y - 26, 20, 26, 4); ctx.fill();
+  ctx.restore();
+
+  // Tap
+  ctx.fillStyle = '#4080a0';
+  ctx.fillRect(p.x - 5, p.y + 2, 10, 4);
+}
+
+// ═══════════════════════════════════════════════════════
+// AGENT CLASS
+// ═══════════════════════════════════════════════════════
+class Agent {
+  // live = true  →  state controlled by SSE events, not simulation
+  constructor(id, live = false) {
+    this.id    = id;
+    this.name  = AGENT_NAMES[id % AGENT_NAMES.length];
+    this.color = AGENT_COLORS[id % AGENT_COLORS.length];
+    this.hair  = HAIR_COLORS[id % HAIR_COLORS.length];
+
+    this.x = 3 + Math.random() * 5;
+    this.y = 2 + Math.random() * 4;
+    this.tx = this.x; this.ty = this.y;
+
+    this.state    = S.WALKING;
+    this.task     = '';
+    this.frame    = 0;
+    this.fTimer   = 0;
+    this.sTimer   = 0;
+    this.sDur     = 1500 + Math.random() * 3000;
+    this.deskIdx  = -1;
+    this.speed    = 0.014 + Math.random() * 0.008;
+    this.bob      = Math.random() * Math.PI * 2;
+
+    // Live-mode properties
+    this.live       = live;
+    this.liveState  = S.CODING;
+    this.liveTask   = 'Connecting...';
+    this.liveTimer  = 0;
+
+    this._pick();
+    this._task();
+  }
+
+  _task() {
+    const pool = S_TASKS[this.state];
+    this.task = pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  _set(st) {
+    this.state  = st;
+    this.sTimer = 0;
+    this.sDur   = 2000 + Math.random() * 5000;
+    this._task();
+  }
+
+  _pick() {
+    const occupied = agents.filter(a => a.id !== this.id).map(a => a.deskIdx);
+    const free = DESKS.map((_,i) => i).filter(i => !occupied.includes(i));
+    if (Math.random() < 0.72 && free.length > 0) {
+      this.deskIdx = free[Math.floor(Math.random() * free.length)];
+      const d = DESKS[this.deskIdx];
+      this.tx = d.x + 0.55;
+      this.ty = d.y + 1.1;
+    } else {
+      this.deskIdx = -1;
+      this.tx = 1.5 + Math.random() * 7.5;
+      this.ty = 1.5 + Math.random() * 5.5;
+    }
+  }
+
+  update(dt) {
+    this.fTimer += dt;
+    if (this.fTimer > 170) { this.frame = (this.frame + 1) % 4; this.fTimer = 0; }
+
+    // ── LIVE MODE: state driven by SSE events ─────────────────────────────
+    if (this.live) {
+      this.state = this.liveState;
+      this.task  = this.liveTask;
+      this.liveTimer += dt;
+
+      // Walk toward a desk when working
+      if (this.state !== S.WAITING && this.deskIdx < 0) this._pick();
+
+      const dx = this.tx - this.x, dy = this.ty - this.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist > 0.08) {
+        this.x += (dx/dist) * this.speed;
+        this.y += (dy/dist) * this.speed;
+      }
+
+      // Auto-clear stuck WAITING after 30 s (user might have walked away)
+      if (this.state === S.WAITING && this.liveTimer > 30000) {
+        this.liveState = S.CODING;
+        this.liveTask  = 'Resuming work...';
+        this.liveTimer = 0;
+      }
+      return;
+    }
+    // ── SIMULATION MODE ───────────────────────────────────────────────────
+    this.sTimer += dt;
+
+    if (this.state === S.WALKING) {
+      const dx = this.tx - this.x, dy = this.ty - this.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 0.07) {
+        if (this.deskIdx >= 0) this._set(Math.random() < 0.55 ? S.CODING : S.SEARCHING);
+        else this._pick();
+      } else {
+        this.x += (dx/dist) * this.speed;
+        this.y += (dy/dist) * this.speed;
+      }
+    } else {
+      if (this.sTimer >= this.sDur) {
+        if (Math.random() < 0.28) {
+          this._set(S.WAITING);
+        } else {
+          this.deskIdx = -1;
+          this._set(S.WALKING);
+          this._pick();
+        }
+      }
+      if (this.state === S.WAITING && this.sTimer > 3800)
+        this._set(Math.random() < 0.6 ? S.CODING : S.SEARCHING);
+    }
+  }
+
+  get depth() { return this.x + this.y; }
+
+  draw() {
+    const p = iso(this.x, this.y, 0);
+    const sx = p.x, sy = p.y;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    ctx.beginPath(); ctx.ellipse(sx, sy, 10, 4, 0, 0, Math.PI*2); ctx.fill();
+
+    const bob = this.state === S.WALKING
+      ? Math.sin(this.bob + this.frame * Math.PI / 2) * -2.5
+      : 0;
+    const by = sy + bob;
+
+    this._sprite(sx, by);
+
+    // Name tag
+    ctx.font = '5.5px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = this.color;
+    ctx.fillText(this.name, sx, by - 42);
+
+    // State dot
+    ctx.fillStyle = S_COLOR[this.state];
+    ctx.beginPath(); ctx.arc(sx + 16, by - 44, 3, 0, Math.PI*2); ctx.fill();
+
+    // LIVE badge (small green antenna above name)
+    if (this.live) {
+      const pulse = Math.sin(Date.now() / 400) * 0.5 + 0.5;
+      ctx.fillStyle = `rgba(0,255,136,${0.6 + pulse * 0.4})`;
+      ctx.beginPath(); ctx.arc(sx - 18, by - 44, 3, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = `rgba(0,255,136,${pulse * 0.5})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(sx - 18, by - 44, 5 + pulse * 2, 0, Math.PI*2); ctx.stroke();
+    }
+
+    if (this.state === S.WAITING) this._bubble(sx, by - 50);
+  }
+
+  _sprite(sx, sy) {
+    const working = this.state !== S.WALKING;
+    const fr = this.frame % 4;
+
+    // ── FEET ──
+    ctx.fillStyle = '#1a1a2e';
+    if (!working) {
+      const lo = fr < 2 ? -3 : 2, ro = -lo;
+      ctx.fillRect(sx - 7, sy - 5 + lo, 5, 4);
+      ctx.fillRect(sx + 2, sy - 5 + ro, 5, 4);
+    } else {
+      ctx.fillRect(sx - 7, sy - 4, 5, 4);
+      ctx.fillRect(sx + 2, sy - 4, 5, 4);
+    }
+
+    // ── LEGS ──
+    ctx.fillStyle = '#2a3f6a';
+    if (!working) {
+      const lo = fr < 2 ? -3 : 2, ro = -lo;
+      ctx.fillRect(sx - 6, sy - 15 + lo, 4, 11);
+      ctx.fillRect(sx + 2, sy - 15 + ro, 4, 11);
+    } else {
+      ctx.fillRect(sx - 6, sy - 12, 4, 9);
+      ctx.fillRect(sx + 2, sy - 12, 4, 9);
+    }
+
+    // ── BODY ──
+    ctx.fillStyle = this.color;
+    ctx.fillRect(sx - 8, sy - 27, 16, 13);
+    // Collar
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(sx - 2, sy - 27, 4, 4);
+    // Highlight
+    ctx.fillStyle = adjustColor(this.color, 45);
+    ctx.fillRect(sx - 7, sy - 26, 4, 5);
+
+    // ── ARMS ──
+    if (working) {
+      ctx.fillStyle = this.color;
+      ctx.fillRect(sx - 13, sy - 25, 5, 8);
+      ctx.fillRect(sx + 8, sy - 25, 5, 8);
+      ctx.fillStyle = '#f5c896';
+      ctx.fillRect(sx - 13, sy - 17, 5, 4);
+      ctx.fillRect(sx + 8, sy - 17, 5, 4);
+    } else {
+      const sw = fr < 2 ? -3 : 3;
+      ctx.fillStyle = this.color;
+      ctx.fillRect(sx - 13, sy - 26 + sw, 5, 9);
+      ctx.fillRect(sx + 8, sy - 26 - sw, 5, 9);
+      ctx.fillStyle = '#f5c896';
+      ctx.fillRect(sx - 13, sy - 17 + sw, 5, 4);
+      ctx.fillRect(sx + 8, sy - 17 - sw, 5, 4);
+    }
+
+    // ── NECK ──
+    ctx.fillStyle = '#f5c896';
+    ctx.fillRect(sx - 3, sy - 30, 6, 4);
+
+    // ── HEAD ──
+    ctx.fillStyle = '#f5c896';
+    ctx.fillRect(sx - 7, sy - 44, 14, 14);
+
+    // ── HAIR ──
+    ctx.fillStyle = this.hair;
+    ctx.fillRect(sx - 7, sy - 44, 14, 4);  // top
+    ctx.fillRect(sx - 7, sy - 44, 3, 8);   // side
+    ctx.fillRect(sx + 4, sy - 44, 3, 2);   // side right tuft
+
+    // ── EYES ──
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(sx - 4, sy - 38, 3, 3);
+    ctx.fillRect(sx + 1, sy - 38, 3, 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(sx - 4, sy - 38, 1, 1);
+    ctx.fillRect(sx + 1, sy - 38, 1, 1);
+    // Glasses for some agents (every 3rd)
+    if (this.id % 3 === 1) {
+      ctx.strokeStyle = '#888'; ctx.lineWidth = 0.7;
+      ctx.strokeRect(sx - 5, sy - 39, 5, 4);
+      ctx.strokeRect(sx, sy - 39, 5, 4);
+      ctx.beginPath(); ctx.moveTo(sx - 5, sy - 37); ctx.lineTo(sx - 7, sy - 37); ctx.stroke();
+    }
+
+    // ── MOUTH ──
+    ctx.fillStyle = '#c07050';
+    if (this.state === S.WAITING) {
+      ctx.fillRect(sx - 3, sy - 33, 6, 1.5);
+    } else if (this.state === S.CODING) {
+      ctx.fillRect(sx - 3, sy - 33, 2, 2);
+      ctx.fillRect(sx + 1, sy - 33, 2, 2);
+    } else {
+      ctx.fillRect(sx - 2, sy - 33, 4, 1.5);
+    }
+  }
+
+  _bubble(sx, sy) {
+    const bw = 26, bh = 22;
+    const bx = sx - bw/2, by = sy - bh;
+    const pulse = Math.sin(Date.now() / 280) * 0.5 + 0.5;
+
+    ctx.save();
+    ctx.shadowColor = '#ff3333'; ctx.shadowBlur = 10 + pulse * 8;
+
+    rr(bx, by, bw, bh, 4);
+    ctx.fillStyle = '#fff'; ctx.fill();
+
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(sx - 4, sy); ctx.lineTo(sx + 4, sy); ctx.lineTo(sx, sy + 9);
+    ctx.closePath(); ctx.fill();
+
+    ctx.restore();
+
+    // Pulse ring
+    ctx.strokeStyle = `rgba(255,50,50,${pulse * 0.5})`;
+    ctx.lineWidth = 1.5;
+    rr(bx - 3, by - 3, bw + 6, bh + 6, 6); ctx.stroke();
+
+    ctx.font = 'bold 13px monospace';
+    ctx.fillStyle = '#ff2020';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('!', sx, by + bh/2);
+  }
+}
+
+function adjustColor(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, (n >> 16)       + amt);
+  const g = Math.min(255, ((n >> 8) & 0xff) + amt);
+  const b = Math.min(255, (n & 0xff)      + amt);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ═══════════════════════════════════════════════════════
+// SCENE SETUP
+// ═══════════════════════════════════════════════════════
+const agents = [];
+let nameCount = 0;
+
+// ═══════════════════════════════════════════════════════
+// SSE — LIVE HOOK INTEGRATION
+// ═══════════════════════════════════════════════════════
+let liveMode  = false;
+const liveAgents = new Map();   // session_id → Agent
+let   sseConn    = null;
+
+function setLiveMode(on) {
+  liveMode = on;
+  const dot = document.getElementById('sseDot');
+  const lbl = document.getElementById('sseLabel');
+  if (dot) {
+    dot.style.background  = on ? '#00ff88' : '#2a3a5a';
+    dot.style.boxShadow   = on ? '0 0 8px #00ff88' : 'none';
+    dot.title = on ? 'LIVE — connected to SSE server' : 'SIM — server not found';
+  }
+  if (lbl) {
+    lbl.style.color      = on ? '#00ff88' : '#2a3a5a';
+    lbl.textContent      = on ? 'LIVE' : 'SIM';
+  }
+}
+
+function handleLiveEvent(evt) {
+  const sid = evt.session_id;
+  if (!sid) return;
+
+  if (!liveAgents.has(sid)) {
+    if (agents.length >= 10) return;
+
+    const agent  = new Agent(nameCount++, true);
+    // Use project folder name as agent name (≤8 chars, uppercase)
+    const proj   = (evt.project || '').replace(/[^a-zA-Z0-9]/g,'').toUpperCase().substring(0, 8);
+    agent.name   = proj || AGENT_NAMES[liveAgents.size % AGENT_NAMES.length];
+    agent.color  = AGENT_COLORS[liveAgents.size % AGENT_COLORS.length];
+    agent.hair   = HAIR_COLORS[liveAgents.size  % HAIR_COLORS.length];
+    agent._pick();
+
+    liveAgents.set(sid, agent);
+    agents.push(agent);
+    updatePanel();
+  }
+
+  const agent = liveAgents.get(sid);
+  if (!agent) return;
+
+  agent.liveState = evt.state || S.CODING;
+  agent.liveTask  = evt.task  || '';
+  agent.liveTimer = 0;
+
+  // Send to a desk whenever working
+  if (agent.liveState !== S.WAITING && agent.deskIdx < 0) agent._pick();
+
+  updatePanel();
+}
+
+function connectSSE() {
+  if (sseConn) { try { sseConn.close(); } catch(_){} }
+
+  const es = new EventSource('http://localhost:3001/stream');
+  sseConn  = es;
+
+  es.onmessage = e => {
+    try {
+      const evt = JSON.parse(e.data);
+      if (evt.type === 'connected') { setLiveMode(true); return; }
+      handleLiveEvent(evt);
+    } catch(_) {}
+  };
+
+  es.onerror = () => {
+    setLiveMode(false);
+    es.close();
+    sseConn = null;
+    // retry in 5 s
+    setTimeout(connectSSE, 5000);
+  };
+}
+
+// Static scene objects sorted by isometric depth (x+y)
+const STATICS = [
+  // Bookshelves (near back wall)
+  {depth:1.2,  draw:()=>drawBookshelf(1,    0.12)},
+  {depth:2.2,  draw:()=>drawBookshelf(2.1,  0.12)},
+  {depth:7.2,  draw:()=>drawBookshelf(7.1,  0.12)},
+  {depth:8.2,  draw:()=>drawBookshelf(8.2,  0.12)},
+  // Desks
+  ...DESKS.map((d,i)=>({depth:d.x+d.y+0.6, draw:()=>drawDesk(d.x,d.y,i)})),
+  // Plants
+  {depth:3.9,  draw:()=>drawPlant(0.25,  3.6)},
+  {depth:10.9, draw:()=>drawPlant(10.4,  0.4)},
+  {depth:7.5,  draw:()=>drawPlant(0.25,  7.2)},
+  // Water cooler
+  {depth:15.6, draw:()=>drawWaterCooler(9.35, 6.2)},
+].sort((a,b) => a.depth - b.depth);
+
+// ═══════════════════════════════════════════════════════
+// VS CODE WINDOW (decorative overlay)
+// ═══════════════════════════════════════════════════════
+const VSCODE_LINES = [
+  {t:"import { Agent } from 'sdk';", c:'#4ecdc4'},
+  {t:'', c:''},
+  {t:'const run = async () => {', c:'#c7a4ff'},
+  {t:"  const agent = new Agent({", c:'#e0e8ff'},
+  {t:"    model: 'claude-opus-4-6',", c:'#ffe66d'},
+  {t:'    tools: [readFile,write],', c:'#ffe66d'},
+  {t:'  });', c:'#e0e8ff'},
+  {t:'  await agent.start();', c:'#4ecdc4'},
+  {t:'};', c:'#c7a4ff'},
+];
+
+function drawVSCode() {
+  const vw = Math.min(210, cvs.width * 0.22);
+  const vh = 136;
+  const vx = cvs.width - vw - 14;
+  const vy = 14;
+  if (vw < 100) return;
+
+  ctx.save();
+  ctx.globalAlpha = 0.88;
+
+  // Window
+  ctx.fillStyle = '#1e1e2e';
+  rr(vx, vy, vw, vh, 6); ctx.fill();
+  ctx.strokeStyle = '#3a3a5a'; ctx.lineWidth = 1.5;
+  rr(vx, vy, vw, vh, 6); ctx.stroke();
+
+  // Title bar
+  ctx.fillStyle = '#2a2a3e';
+  ctx.fillRect(vx + 1, vy + 1, vw - 2, 20);
+  ctx.fillRect(vx + 1, vy + 14, vw - 2, 7);
+
+  // Traffic lights
+  [[12,'#ff5f57'],[24,'#febc2e'],[36,'#28c840']].forEach(([ox,c])=>{
+    ctx.fillStyle = c;
+    ctx.beginPath(); ctx.arc(vx + ox, vy + 10, 4, 0, Math.PI*2); ctx.fill();
+  });
+
+  // Tab
+  ctx.fillStyle = '#12122a';
+  ctx.fillRect(vx + 52, vy + 2, 72, 17);
+  ctx.font = '6px monospace'; ctx.fillStyle = '#8888aa'; ctx.textAlign = 'left';
+  ctx.fillText('agent.ts', vx + 58, vy + 14);
+
+  // Sidebar
+  ctx.fillStyle = '#161626';
+  ctx.fillRect(vx + 1, vy + 21, 44, vh - 22);
+  ctx.font = '5px monospace';
+  ['EXPLORER','src/','  agent.ts','  utils.ts','  index.ts'].forEach((t,i)=>{
+    ctx.fillStyle = i === 2 ? '#c7a4ff' : '#555577';
+    ctx.fillText(t, vx + 4, vy + 32 + i * 11);
+  });
+
+  // Code
+  const cx = vx + 50, cy = vy + 27;
+  VSCODE_LINES.forEach((ln, i) => {
+    if (!ln.t) return;
+    // Line number
+    ctx.fillStyle = '#445'; ctx.font = '5px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(String(i+1), cx - 4, cy + i * 11);
+    // Code text
+    ctx.fillStyle = ln.c; ctx.textAlign = 'left';
+    ctx.fillText(ln.t, cx + 2, cy + i * 11);
+  });
+
+  // Cursor blink
+  if (Math.floor(Date.now() / 500) % 2 === 0) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(cx + 2, cy + 8 * 11 - 8, 3, 7);
+  }
+
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════
+// DRAW SCENE
+// ═══════════════════════════════════════════════════════
+function drawScene() {
+  ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, 0, cvs.height);
+  bg.addColorStop(0, '#09101e');
+  bg.addColorStop(1, '#0d1428');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, cvs.width, cvs.height);
+
+  // Floor (painter's order: back to front)
+  for (let s = 0; s <= GW + GH - 2; s++) {
+    for (let gx = 0; gx <= s; gx++) {
+      const gy = s - gx;
+      if (gx < GW && gy >= 0 && gy < GH) {
+        const light = (gx + gy) % 2 === 0;
+        tile(gx, gy, light ? '#1e2a52' : '#192244', '#1c2a52');
+      }
+    }
+  }
+
+  // Ambient floor glow in center
+  const cp = iso(GW/2, GH/2);
+  const fg = ctx.createRadialGradient(cp.x, cp.y, 0, cp.x, cp.y, 200);
+  fg.addColorStop(0, 'rgba(80,0,200,0.08)');
+  fg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = fg; ctx.fillRect(0, 0, cvs.width, cvs.height);
+
+  // Back wall (north: y=0)
+  for (let gx = 0; gx < GW; gx++)
+    box(gx, 0, 1, 0.06, 1.6, '#1a3060', '#0c1830', '#101e40');
+
+  // Left wall (west: x=0)
+  for (let gy = 0; gy < GH; gy++)
+    box(0, gy, 0.06, 1, 1.6, '#1a3060', '#0c1830', '#101e40');
+
+  // Merge statics + agents, sort by depth, draw
+  const drawables = [
+    ...STATICS,
+    ...agents.map(a => ({depth: a.depth, draw: () => a.draw()})),
+  ].sort((a, b) => a.depth - b.depth);
+
+  drawables.forEach(d => d.draw());
+
+  // VS Code window overlay
+  drawVSCode();
+}
+
+// ═══════════════════════════════════════════════════════
+// PANEL UI
+// ═══════════════════════════════════════════════════════
+function updatePanel() {
+  const panel = document.getElementById('panel');
+  if (agents.length === 0) {
+    panel.innerHTML = '<div id="emptyMsg" style="font-size:8px;color:#1e3a5f;text-align:center;width:100%;letter-spacing:2px;line-height:2;">CLICK &ldquo;+ AGENT&rdquo; TO SPAWN YOUR FIRST AI AGENT</div>';
+    return;
+  }
+  panel.innerHTML = '';
+  agents.forEach(a => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText = `border-color:${a.color};box-shadow:0 0 10px ${a.color}1a;`;
+    const liveBadge = a.live
+      ? `<span style="font-size:5px;color:#00ff88;border:1px solid #00ff88;padding:1px 4px;margin-left:4px;letter-spacing:1px;">LIVE</span>`
+      : '';
+    card.innerHTML = `
+      <div class="card-name">
+        <div class="card-dot" style="background:${a.color}"></div>
+        <span style="color:${a.color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.name}</span>
+        ${liveBadge}
+      </div>
+      <div class="card-state">
+        <div class="card-pip" style="background:${S_COLOR[a.state]}"></div>
+        <span style="color:${S_COLOR[a.state]}">${a.state}</span>
+      </div>
+      <div class="card-task">${a.task}</div>
+    `;
+    panel.appendChild(card);
+  });
+  document.getElementById('countBadge').textContent = `${agents.length} / 10`;
+}
+
+// ═══════════════════════════════════════════════════════
+// GAME LOOP
+// ═══════════════════════════════════════════════════════
+let last = 0, panelClock = 0;
+
+function loop(ts) {
+  const dt = Math.min(ts - last, 50);
+  last = ts;
+  agents.forEach(a => a.update(dt));
+  drawScene();
+  panelClock += dt;
+  if (panelClock > 1100) { updatePanel(); panelClock = 0; }
+  requestAnimationFrame(loop);
+}
+
+// ═══════════════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════════════
+function addAgent() {
+  if (agents.length >= 10) return;
+  agents.push(new Agent(nameCount++));
+  updatePanel();
+}
+
+document.getElementById('addBtn').addEventListener('click', addAgent);
+window.addEventListener('resize', resize);
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+resize();
+addAgent(); addAgent(); addAgent();
+connectSSE();   // try to reach SSE server; retries every 5 s if not found
+requestAnimationFrame(ts => { last = ts; loop(ts); });
+</script>
+</body>
+</html>
